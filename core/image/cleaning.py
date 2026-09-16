@@ -596,7 +596,13 @@ def clean_speech_bubbles(
 
         image = pil_to_cv2(pil_image)
         img_height, img_width = image.shape[:2]
-        img_gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        if len(image.shape) == 2:
+            img_gray = image.copy()
+            image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+        elif len(image.shape) == 3 and image.shape[2] == 4:
+            img_gray = cv2.cvtColor(image, cv2.COLOR_BGRA2GRAY)
+        else:
+            img_gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
         cleaned_image = image.copy()
 

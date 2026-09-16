@@ -2355,58 +2355,70 @@ async def _batch_translate_parallel(
     first_output, first_display, first_key = _resolve_output_path(
         first_img, input_dir, output_dir, config, preserve_structure
     )
-    log_message(
-        f"Processing 1/{total_images}: {first_display} (warming up models)",
-        always_print=True,
-    )
-    try:
-        if cancellation_manager and cancellation_manager.is_cancelled():
-            raise CancellationError("Batch process cancelled by user.")
-        first_previous_context_images = _build_previous_context_images(
-            image_files,
-            0,
-            config,
-            previous_context_cache,
-            previous_context_cache_lock,
+    if (
+        getattr(config, "skip_existing", True)
+        and first_output.exists()
+        and first_output.stat().st_size > 1024
+    ):
+        log_message(
+            f"Skipping 1/{total_images}: {first_display} (already translated)",
+            always_print=True,
         )
-        first_previous_context_texts = _build_previous_context_texts(
-            image_files,
-            0,
-            config,
-            ocr_text_history,
-            ocr_text_history_lock,
-        )
-        first_ocr_texts: list[str] = []
-        translate_and_render(
-            first_img,
-            config,
-            first_output,
-            cancellation_manager=cancellation_manager,
-            previous_context_images=first_previous_context_images,
-            previous_context_texts=first_previous_context_texts,
-            ocr_texts_out=first_ocr_texts,
-        )
-        if first_ocr_texts:
-            with ocr_text_history_lock:
-                ocr_text_history[first_img] = first_ocr_texts
         results["success_count"] += 1
-    except CancellationError:
-        raise
-    except Exception as e:
-        log_message(f"Error processing {first_display}: {e!s}", always_print=True)
-        source_path = resolve_source_path(first_img, source_path_map)
-        results["error_count"] += 1
-        results["errors"][first_key] = str(e)
-        results["failed_image_paths"].append(source_path)
-        results["_failed_jobs"].append(
-            {
-                "error_key": first_key,
-                "img_path": first_img,
-                "source_path": source_path,
-            }
-        )
-    finally:
         ocr_text_ready_events[0].set()
+    else:
+        log_message(
+            f"Processing 1/{total_images}: {first_display} (warming up models)",
+            always_print=True,
+        )
+        try:
+            if cancellation_manager and cancellation_manager.is_cancelled():
+                raise CancellationError("Batch process cancelled by user.")
+            first_previous_context_images = _build_previous_context_images(
+                image_files,
+                0,
+                config,
+                previous_context_cache,
+                previous_context_cache_lock,
+            )
+            first_previous_context_texts = _build_previous_context_texts(
+                image_files,
+                0,
+                config,
+                ocr_text_history,
+                ocr_text_history_lock,
+            )
+            first_ocr_texts: list[str] = []
+            translate_and_render(
+                first_img,
+                config,
+                first_output,
+                cancellation_manager=cancellation_manager,
+                previous_context_images=first_previous_context_images,
+                previous_context_texts=first_previous_context_texts,
+                ocr_texts_out=first_ocr_texts,
+            )
+            if first_ocr_texts:
+                with ocr_text_history_lock:
+                    ocr_text_history[first_img] = first_ocr_texts
+            results["success_count"] += 1
+        except CancellationError:
+            raise
+        except Exception as e:
+            log_message(f"Error processing {first_display}: {e!s}", always_print=True)
+            source_path = resolve_source_path(first_img, source_path_map)
+            results["error_count"] += 1
+            results["errors"][first_key] = str(e)
+            results["failed_image_paths"].append(source_path)
+            results["_failed_jobs"].append(
+                {
+                    "error_key": first_key,
+                    "img_path": first_img,
+                    "source_path": source_path,
+                }
+            )
+        finally:
+            ocr_text_ready_events[0].set()
 
     completed_count = 1
     if progress_callback:
@@ -2446,42 +2458,56 @@ async def _batch_translate_parallel(
         output_path, display_path, error_key = _resolve_output_path(
             img_path, input_dir, output_dir, config, preserve_structure
         )
-        log_message(
-            f"Processing {index + 1}/{total_images}: {display_path}",
-            always_print=True,
-        )
-        previous_context_images = _build_previous_context_images(
-            image_files,
-            index,
-            config,
-            previous_context_cache,
-            previous_context_cache_lock,
-        )
+        try:
+            if (
+                getattr(config, "skip_existing", True)
+                and output_path.exists()
+                and output_path.stat().st_size > 1024
+            ):
+                log_message(
+                    f"Skipping {index + 1}/{total_images}: {display_path} (already translated)",
+                    always_print=True,
+                )
+                return display_path, error_key
 
-        def previous_context_texts_provider() -> list[list[str]]:
-            _wait_for_required_previous_ocr(index)
-            return _build_previous_context_texts(
+            log_message(
+                f"Processing {index + 1}/{total_images}: {display_path}",
+                always_print=True,
+            )
+            previous_context_images = _build_previous_context_images(
                 image_files,
                 index,
                 config,
-                ocr_text_history,
-                ocr_text_history_lock,
+                previous_context_cache,
+                previous_context_cache_lock,
             )
 
-        captured_ocr_texts: list[str] = []
-        translate_and_render(
-            img_path,
-            config,
-            output_path,
-            cancellation_manager=cancellation_manager,
-            previous_context_images=previous_context_images,
-            previous_context_texts_provider=previous_context_texts_provider,
-            ocr_texts_out=captured_ocr_texts,
-        )
-        if captured_ocr_texts:
-            with ocr_text_history_lock:
-                ocr_text_history[img_path] = captured_ocr_texts
-        return display_path, error_key
+            def previous_context_texts_provider() -> list[list[str]]:
+                _wait_for_required_previous_ocr(index)
+                return _build_previous_context_texts(
+                    image_files,
+                    index,
+                    config,
+                    ocr_text_history,
+                    ocr_text_history_lock,
+                )
+
+            captured_ocr_texts: list[str] = []
+            translate_and_render(
+                img_path,
+                config,
+                output_path,
+                cancellation_manager=cancellation_manager,
+                previous_context_images=previous_context_images,
+                previous_context_texts_provider=previous_context_texts_provider,
+                ocr_texts_out=captured_ocr_texts,
+            )
+            if captured_ocr_texts:
+                with ocr_text_history_lock:
+                    ocr_text_history[img_path] = captured_ocr_texts
+            return display_path, error_key
+        finally:
+            ocr_text_ready_events[index].set()
 
     async def _worker(img_path: Path, index: int, executor: ThreadPoolExecutor):
         nonlocal completed_count, cancelled
@@ -2688,6 +2714,18 @@ def batch_translate_images(
 
                 if cancellation_manager and cancellation_manager.is_cancelled():
                     raise CancellationError("Batch process cancelled by user.")
+
+                if (
+                    getattr(config, "skip_existing", False)
+                    and output_path.exists()
+                    and output_path.stat().st_size > 1024
+                ):
+                    log_message(
+                        f"Skipping {i + 1}/{total_images}: {display_path} (already translated)",
+                        always_print=True,
+                    )
+                    results["success_count"] += 1
+                    continue
 
                 if progress_callback:
                     current_progress = i / total_images

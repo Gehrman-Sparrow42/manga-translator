@@ -1372,13 +1372,19 @@ def detect_speech_bubbles(
                 verbose=verbose,
             )
 
-    if len(primary_boxes) == 0:
+    if len(primary_boxes) == 0 and not conjoined_detection:
         log_message("No detections found", verbose=verbose)
         return detections, text_free_boxes
 
-    log_message(
-        f"Detected {len(primary_boxes)} speech bubbles with YOLO", always_print=True
-    )
+    if len(primary_boxes) > 0:
+        log_message(
+            f"Detected {len(primary_boxes)} speech bubbles with YOLO", always_print=True
+        )
+    else:
+        log_message(
+            "No speech bubbles detected with YOLO; running secondary detector for bubbles and text...",
+            always_print=True,
+        )
 
     secondary_boxes = torch.tensor([])
     secondary_sources = []

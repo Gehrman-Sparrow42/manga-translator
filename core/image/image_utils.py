@@ -26,7 +26,11 @@ def pil_to_cv2(pil_image):
     Returns:
         numpy.ndarray: OpenCV image in BGR format
     """
+    if hasattr(pil_image, "mode") and pil_image.mode not in ("RGB", "RGBA"):
+        pil_image = pil_image.convert("RGB")
     rgb_image = np.array(pil_image)
+    if len(rgb_image.shape) == 2:
+        return cv2.cvtColor(rgb_image, cv2.COLOR_GRAY2BGR)
     if len(rgb_image.shape) == 3:
         if rgb_image.shape[2] == 3:  # RGB
             return cv2.cvtColor(rgb_image, cv2.COLOR_RGB2BGR)
@@ -45,6 +49,8 @@ def cv2_to_pil(cv2_image):
     Returns:
         PIL.Image: PIL Image object
     """
+    if cv2_image is None or cv2_image.size == 0 or cv2_image.shape[0] == 0 or cv2_image.shape[1] == 0:
+        return Image.new("RGB", (1, 1), (255, 255, 255))
     if len(cv2_image.shape) == 3:
         if cv2_image.shape[2] == 3:  # BGR
             rgb_image = cv2.cvtColor(cv2_image, cv2.COLOR_BGR2RGB)

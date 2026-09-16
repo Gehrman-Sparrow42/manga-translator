@@ -1227,11 +1227,15 @@ def finish_outside_text_work(
                                         np.uint8([[ref_bg_rgb]]), cv2.COLOR_RGB2LAB
                                     )[0][0]
 
+                                    if rx1 <= rx0 or ry1 <= ry0:
+                                        continue
                                     crop_rgb = np.array(
                                         pil_image.crop((rx0, ry0, rx1, ry1)).convert(
                                             "RGB"
                                         )
                                     )
+                                    if crop_rgb.size == 0 or crop_rgb.shape[0] == 0 or crop_rgb.shape[1] == 0:
+                                        continue
                                     crop_gray = cv2.cvtColor(
                                         crop_rgb, cv2.COLOR_RGB2GRAY
                                     )

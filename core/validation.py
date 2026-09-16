@@ -176,6 +176,8 @@ def clamp_settings(settings: Any) -> Any:
     for key, paths in _CONFIG_ATTR_PATHS.items():
         if not hasattr(settings, "__dict__"):
             break
+        if key not in SETTING_CONSTRAINTS:
+            continue
         min_val, max_val = SETTING_CONSTRAINTS[key]
         for path in paths:
             target = settings

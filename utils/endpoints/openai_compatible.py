@@ -237,25 +237,29 @@ def call_openai_compatible_endpoint(
             log_message(f"Processing response from {url}", verbose=debug)
             try:
                 result = response.json()
+                log_message(f"DEBUG API RESULT: {result}", always_print=True)
 
                 if "choices" in result and len(result["choices"]) > 0:
                     choice = result["choices"][0]
                     finish_reason = choice.get("finish_reason")
 
                     message = choice.get("message")
-                    if message and "content" in message:
-                        content = message["content"]
-                        return content.strip() if content else ""
-                    else:
-                        log_message(
-                            f"No message content in response. Finish reason: {finish_reason}",
-                            always_print=True,
-                        )
-                        log_message(
-                            f"Full response: {json.dumps(result, indent=2)}",
-                            verbose=debug,
-                        )
-                        return ""
+                    if message:
+                        content = message.get("content") or ""
+                        if not content and message.get("reasoning"):
+                            log_message("Warning: Using message['reasoning'] as fallback since 'content' was empty", always_print=True)
+                            content = message.get("reasoning")
+                        if content:
+                            return content.strip()
+                    log_message(
+                        f"No message content in response. Finish reason: {finish_reason}",
+                        always_print=True,
+                    )
+                    log_message(
+                        f"Full response: {json.dumps(result, indent=2)}",
+                        verbose=debug,
+                    )
+                    return ""
                 else:
                     log_message(
                         "No choices in OpenAI-Compatible response", always_print=True

@@ -69,6 +69,12 @@ def main():
         help="Batch only: automatically retry each failed image once at the very end",
     )
     parser.add_argument(
+        "--skip-existing",
+        action="store_true",
+        default=True,
+        help="Batch only: skip processing images whose output translated file already exists",
+    )
+    parser.add_argument(
         "--overlap-llm-with-inpaint",
         action="store_true",
         help="Run LLM translation concurrently with inpainting",
@@ -1195,6 +1201,7 @@ def main():
             args.batch and args.batch_parallel_within_pages
         ),
         retry_failed_once=bool(args.batch and args.retry_failed_once),
+        skip_existing=bool(args.skip_existing),
         overlap_llm_with_inpaint=bool(args.overlap_llm_with_inpaint),
         detection=DetectionConfig(
             confidence=args.confidence,

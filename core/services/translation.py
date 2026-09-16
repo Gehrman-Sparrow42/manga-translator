@@ -2240,7 +2240,11 @@ def prepare_bubble_images_for_translation(
                     x2 = max(x2, mx2)
                     y2 = max(y2, my2)
 
+        if x2 <= x1 or y2 <= y1:
+            continue
         bubble_image_cv = original_cv_image[y1:y2, x1:x2].copy()
+        if bubble_image_cv.size == 0 or bubble_image_cv.shape[0] == 0 or bubble_image_cv.shape[1] == 0:
+            continue
 
         # White-out conjoined neighbor text regions visible in this crop
         neighbor_bboxes = bubble.get("conjoined_neighbor_bboxes")
