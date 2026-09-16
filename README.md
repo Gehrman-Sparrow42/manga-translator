@@ -1,4 +1,4 @@
-# MangaTranslator
+# manga-translator
 
 Automated pipeline for detecting, cleaning, translating, and re-typesetting text in comic and manga page imagery.
 
