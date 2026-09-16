@@ -1,10 +1,13 @@
 # manga-translator
 
-Automated pipeline for detecting, cleaning, translating, and re-typesetting text in comic and manga page imagery.
+Automated end-to-end computer vision and LLM pipeline for comic speech bubble detection, inpainting, and typesetting.
+
+> **Note on Origin & Customizations:**  
+> This repository is a customized and optimized downstream distribution of the open-source [meangrinch/MangaTranslator](https://github.com/meangrinch/MangaTranslator) project. It incorporates fine-tuned modifications to outside-bubble text supersampling, adaptive outline scaling, OpenCV inpainting routines, and unified multi-provider LLM endpoints. Distributed under the Apache 2.0 License.
 
 ## Overview
 
-MangaTranslator is an end-to-end computer vision and natural language processing tool for localized comics. It ingests high-resolution manga and comic pages (`.png`, `.jpg`, `.webp`), segments speech bubbles and outside-bubble text using object detection models, removes source script via targeted inpainting, queries vision-language models for contextual translation across 60+ languages, and renders translated typography with automated font scaling and hyphenation into final rendered plates.
+MangaTranslator is an automated computer vision and natural language processing tool for localized comics. It ingests high-resolution manga and comic pages (`.png`, `.jpg`, `.webp`), segments speech bubbles and outside-bubble text using object detection models, removes source script via targeted inpainting, queries vision-language models for contextual translation across 60+ languages, and renders translated typography with automated font scaling and hyphenation into final rendered plates.
 
 ## Architecture and Pipeline
 
@@ -30,6 +33,14 @@ flowchart LR
 - Typesetting & Font Placement: Translated strings are measured against mask geometry, automatically wrapped, hyphenated, and typeset using assigned font packs (`.ttf`/`.otf`) with dynamic font sizing.
 - Post-Processing: Canvas composites are assembled, optionally upscaled using super-resolution models (AnimeSharp / Real-ESRGAN), and written to disk or packaged into archives.
 
+## Downstream Optimizations & Modifications
+
+This build includes the following specific enhancements over the upstream distribution:
+- **Supersampling Crop Expansion:** Expanded bounding box padding in `outside_text_processor.py` to eliminate clipping on tilted or vertical Japanese script.
+- **Sub-linear Outline Scaling:** Adjusted text outline stroke thickness to scale non-linearly with font size, improving legibility on dense dialogue bubbles.
+- **Unified Provider Fallbacks:** Added automatic environment variable detection in `core/config.py` for headless cloud deployments.
+- **Sanitized Execution Pipeline:** Hardcoded path abstractions and standardized environment configuration via `.env.example`.
+
 ## Tech Stack
 
 | Component | Technology | Description |
@@ -44,9 +55,10 @@ flowchart LR
 ## Project Structure
 
 ```text
-MangaTranslator/
+manga-translator/
 ├── .env.example              # Translation provider API template
 ├── .gitignore                # Source control exclusion filters
+├── LICENSE                   # Apache 2.0 License
 ├── README.md                 # Technical documentation
 ├── main.py                   # Application entrypoint (CLI and WebUI)
 ├── core/                     # Processing engine
@@ -67,14 +79,15 @@ MangaTranslator/
 
 ### Prerequisites
 - Python 3.10 or higher
-- NVIDIA GPU with CUDA support recommended (CPU execution supported with reduced speed)
+- NVIDIA GPU with CUDA support recommended (CPU execution supported with reduced throughput)
 - API key for at least one supported translation provider (Gemini, OpenAI, Anthropic, or OpenRouter)
 
 ### Installation
 
-1. Navigate to the project directory:
+1. Clone repository:
    ```bash
-   cd c:/Tools/MangaTranslator/MangaTranslator_portable/MangaTranslator
+   git clone https://github.com/Gehrman-Sparrow42/manga-translator.git
+   cd manga-translator
    ```
 
 2. Configure environment variables:
@@ -118,3 +131,7 @@ python main.py --cli --input-dir "path/to/raws" --output-dir "path/to/translated
 - VRAM Requirements: Diffusion-based inpainting (FLUX) and large local vision models require 8GB+ VRAM. For lower resource environments, use `opencv` inpainting combined with cloud LLM endpoints.
 - Rate Limiting: High-volume batch operations against cloud APIs may trigger provider concurrency limits. The pipeline employs sequential queue dispatch to respect standard tier thresholds.
 - Typography: If specific glyphs or diacritics are missing from the default font, configure a custom Unicode font pack inside the Web UI font settings.
+
+## Credits & Attribution
+
+Original project created and maintained by [meangrinch/MangaTranslator](https://github.com/meangrinch/MangaTranslator). Licensed under the Apache License, Version 2.0.
