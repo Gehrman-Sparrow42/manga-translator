@@ -946,7 +946,10 @@ def extract_text_with_paddle_ocr_vl(
 
                 # The checkpoint defaults to use_cache=False. Reusing attention
                 # states avoids recomputing the image and full prefix per token.
-                outputs = model.generate(**inputs, max_new_tokens=1024, use_cache=True)
+                outputs = model.generate(
+                    **inputs, max_new_tokens=1024, use_cache=True,
+                    repetition_penalty=1.1,
+                )
 
                 text = processor.decode(outputs[0][inputs["input_ids"].shape[-1] : -1])
                 extracted_texts.append(text.strip() if text else "")

@@ -21,6 +21,72 @@ def _wait_heartbeat(stop: threading.Event) -> None:
         print("OpenAI-Compatible API request still waiting for a response.", flush=True)
 
 
+def _is_local_ollama(url: str) -> bool:
+    parsed = urlsplit(url)
+    try:
+        return parsed.hostname in {"localhost", "127.0.0.1", "::1"} and parsed.port == 11434
+    except ValueError:
+        return False
+
+
+def _read_ollama_stream(response: requests.Response) -> dict[str, Any]:
+    if "application/json" in response.headers.get("Content-Type", "").lower():
+        return response.json()
+
+    # SSE is UTF-8 regardless of requests' default encoding for text media types.
+    response.encoding = "utf-8"
+    content = []
+    reasoning = []
+    finish_reason = None
+    saw_choice = False
+    done = False
+    for line in response.iter_lines(decode_unicode=True):
+        if not line or line.startswith(":"):
+            continue
+        if not line.startswith("data:"):
+            raise TranslationError("Malformed OpenAI-Compatible stream event")
+        data = line[5:].strip()
+        if data == "[DONE]":
+            done = True
+            break
+        try:
+            event = json.loads(data)
+            if not isinstance(event, dict):
+                raise TypeError("event is not an object")
+            if "error" in event:
+                error = event["error"]
+                message = error.get("message", "Unknown error") if isinstance(error, dict) else str(error)
+                raise TranslationError(f"OpenAI-Compatible API returned a stream error: {message}")
+            choices = event.get("choices")
+            if not isinstance(choices, list):
+                raise ValueError("event choices are missing")
+            if not choices:
+                continue
+            choice = choices[0]
+            delta = choice.get("delta") or {}
+            if not isinstance(delta, dict):
+                raise TypeError("event delta is invalid")
+            for key, target in (("content", content), ("reasoning", reasoning)):
+                value = delta.get(key)
+                if value is not None:
+                    if not isinstance(value, str):
+                        raise TypeError(f"event {key} is invalid")
+                    target.append(value)
+            if choice.get("finish_reason") is not None:
+                finish_reason = choice["finish_reason"]
+            saw_choice = True
+        except (json.JSONDecodeError, AttributeError, TypeError, ValueError) as exc:
+            raise TranslationError("Malformed OpenAI-Compatible stream event") from exc
+
+    if not saw_choice or (
+        not done and not (finish_reason and ("".join(content).strip() or "".join(reasoning).strip()))
+    ):
+        raise TranslationError("Incomplete OpenAI-Compatible API stream")
+    return {"choices": [{"message": {"content": "".join(content),
+                                     "reasoning": "".join(reasoning)},
+                         "finish_reason": finish_reason}]}
+
+
 def build_openai_compatible_url(base_url: str, model_name: str | None = None) -> str:
     """Builds the full chat completions URL for generic or Azure OpenAI endpoints."""
     if not base_url:
@@ -228,6 +294,9 @@ def call_openai_compatible_endpoint(
         payload["effort"] = effort
 
     payload = {k: v for k, v in payload.items() if v is not None}
+    local_ollama = _is_local_ollama(url)
+    if local_ollama:
+        payload["stream"] = True
 
     for attempt in range(max_retries + 1):
         current_delay = min(base_delay * (2**attempt), 16.0)
@@ -242,18 +311,40 @@ def call_openai_compatible_endpoint(
                 target=_wait_heartbeat, args=(stop_heartbeat,), daemon=True
             )
             heartbeat.start()
+            response = None
             try:
-                response = requests.post(
-                    url, headers=headers, json=payload, timeout=timeout
-                )
+                if local_ollama:
+                    response = requests.post(
+                        url, headers=headers, json=payload, timeout=timeout, stream=True
+                    )
+                    try:
+                        response.raise_for_status()
+                    except requests.exceptions.HTTPError:
+                        # Preserve the existing error-body handling after closing the stream.
+                        _ = response.content
+                        raise
+                    try:
+                        stream_result = _read_ollama_stream(response)
+                    except (json.JSONDecodeError, KeyError, IndexError, TypeError) as e:
+                        raise TranslationError(
+                            f"Error processing successful OpenAI-Compatible API response: {e!s}"
+                        ) from e
+                else:
+                    response = requests.post(
+                        url, headers=headers, json=payload, timeout=timeout
+                    )
             finally:
-                stop_heartbeat.set()
-                heartbeat.join()
+                try:
+                    if local_ollama and response is not None:
+                        response.close()
+                finally:
+                    stop_heartbeat.set()
+                    heartbeat.join()
             response.raise_for_status()
 
             log_message(f"Processing response from {url}", verbose=debug)
             try:
-                result = response.json()
+                result = stream_result if local_ollama else response.json()
                 log_message(f"DEBUG API RESULT: {result}", always_print=True)
 
                 if "choices" in result and len(result["choices"]) > 0:
