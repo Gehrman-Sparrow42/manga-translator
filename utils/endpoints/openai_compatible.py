@@ -1,4 +1,5 @@
 import json
+import threading
 import time
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
@@ -11,6 +12,13 @@ from utils.model_metadata import (
     is_azure_url,
     is_gemini_no_sampling_model,
 )
+
+_WAIT_HEARTBEAT_INTERVAL = 30.0
+
+
+def _wait_heartbeat(stop: threading.Event) -> None:
+    while not stop.wait(_WAIT_HEARTBEAT_INTERVAL):
+        print("OpenAI-Compatible API request still waiting for a response.", flush=True)
 
 
 def build_openai_compatible_url(base_url: str, model_name: str | None = None) -> str:
@@ -229,9 +237,18 @@ def call_openai_compatible_endpoint(
                 verbose=debug,
             )
 
-            response = requests.post(
-                url, headers=headers, json=payload, timeout=timeout
+            stop_heartbeat = threading.Event()
+            heartbeat = threading.Thread(
+                target=_wait_heartbeat, args=(stop_heartbeat,), daemon=True
             )
+            heartbeat.start()
+            try:
+                response = requests.post(
+                    url, headers=headers, json=payload, timeout=timeout
+                )
+            finally:
+                stop_heartbeat.set()
+                heartbeat.join()
             response.raise_for_status()
 
             log_message(f"Processing response from {url}", verbose=debug)
